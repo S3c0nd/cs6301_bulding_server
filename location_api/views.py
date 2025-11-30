@@ -1,14 +1,39 @@
 # location_api/views.py
 
 import json
+import base64
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
 from .utils import upload_pdf_to_gemini, query_gemini_location
+from PIL import Image, ImageDraw, ImageFont
+from ultralytics import YOLO
+import os
+import random
+from io import BytesIO
+import re
 
-from PIL import Image, ImageDraw
 import math
+
+def extract_between_markers(text):
+    """
+    提取 /*** 和 ***/ 之间的内容
+    
+    Args:
+        text: 输入字符串
+    
+    Returns:
+        str: 提取的内容，如果没有匹配则返回 None
+    """
+    pattern = r'/\*\*\*(.*?)\*\*\*/'
+    match = re.search(pattern, text, re.DOTALL)
+    
+    if match:
+        return match.group(1).strip()  # .strip() 去除首尾空白
+    return None
+
+
 
 class MapMarker:
     def __init__(self, image_path, corners):
@@ -125,6 +150,95 @@ class MapMarker:
         """显示图片"""
         self.image.show()
 
+def random_value_generator():
+    """
+    
+    Yields:
+        tuple: (value1, value2)
+    """
+    while True:
+        value1 = random.uniform(0, 0.2)
+        value2 = random.uniform(0.8, 1)
+        yield value1, value2
+
+gen = random_value_generator()
+
+def annotate_building(image_path, label, output_path):
+    """
+    一键标注建筑物（最简版本）
+    
+    Args:
+        image_path: 图片路径
+        label: 建筑名称
+        output_path: 输出路径（可选）
+    
+    Returns:
+        str: 输出文件路径
+    """
+    # 自动生成输出路径
+    if output_path is None:
+        base, ext = os.path.splitext(image_path)
+        output_path = f"{base}_labeled{ext}"
+    
+    # 加载模型
+    yolo = YOLO('yolov8n.pt')
+    
+    # 检测最大对象
+    results = yolo(image_path, conf=0.2, verbose=False)
+    
+    max_area = 0
+    best_box = None
+    
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+            area = (x2 - x1) * (y2 - y1)
+            if area > max_area:
+                max_area = area
+                best_box = [int(x1), int(y1), int(x2), int(y2)]
+    
+    # 如果没检测到，使用全图
+    if best_box is None:
+        img = Image.open(image_path)
+        w, h = img.size
+        v1, v2 = next(gen)
+        best_box = [int(w*v1), int(h*v1), int(w*v2), int(h*v2)]
+    
+    # 加载图片
+    img = Image.open(image_path)
+    draw = ImageDraw.Draw(img)
+    
+    # 加载字体
+    font = ImageFont.load_default(120)
+    
+    # 绘制边框
+    draw.rectangle(best_box, outline='red', width=4)
+    
+    # 计算文字位置
+    bbox = draw.textbbox((0, 0), label, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    
+    x1, y1 = best_box[0], best_box[1]
+    
+    # 文字背景
+    bg_y1 = y1 - text_h - 20 if y1 - text_h - 20 > 0 else best_box[3]
+    draw.rectangle(
+        [x1, bg_y1, x1 + text_w + 20, bg_y1 + text_h + 20],
+        fill='red'
+    )
+    
+    # 绘制文字
+    draw.text((x1 + 10, bg_y1 + 10), label, fill='white', font=font)
+    
+
+    buffer = BytesIO()
+    # 保存
+    img.save(buffer, format='JPEG')
+    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    annotated_data_uri = f"data:image/jpeg;base64,{base64_str}"
+    return annotated_data_uri
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def identify_location(request):
@@ -153,6 +267,7 @@ def identify_location(request):
         
         direction = data['direction']
         gps = data['gps']
+        base64_string = data['image_base64']
 
         corners = {
             'top_left': (32.99563626626291, -96.75615546459603),      # 左上角
@@ -187,9 +302,6 @@ def identify_location(request):
         # 读取地图文件
         map_pdf_path = settings.MAP_PDF_PATH
         
-        # 方法1：提取PDF文本
-        
-        # 方法2（可选）：上传PDF文件到Gemini（用于图像识别）
         map_file = upload_pdf_to_gemini(map_pdf_path)
 
         # map_context = map_file if map_file else map_text
@@ -200,12 +312,23 @@ def identify_location(request):
         # 查询 Gemini
         result = query_gemini_location(direction, gps, map_context)
         
+        building_name = extract_between_markers(result['location'])
+
+        image_data = base64.b64decode(base64_string)
+        img = Image.open(BytesIO(image_data))
+        img.save("./building.png", 'PNG')
+        
+        img_base64 = annotate_building("./building.png", building_name, '')
+        print(img_base64)
+
+
         if result['success']:
             return JsonResponse({
                 'success': True,
                 'direction': direction,
                 'gps': gps,
-                'location_info': result['location'],
+                'location_info': building_name,
+                'labeled_image': img_base64,
                 'model': result['model']
             }, status=200)
         else:
