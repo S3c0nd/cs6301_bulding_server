@@ -29,11 +29,11 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-GEMINI_API_KEY = 'AIzaSyD1LTw6epdh2HUBxiVo6qYzW74SOsyDFKY'  
+GEMINI_API_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-default-for-dev')  
 OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 
-MAP_PDF_PATH = os.path.join(BASE_DIR, 'location_api',  'output_map.png')
+MAP_PDF_PATH = os.path.join(BASE_DIR,  'output_map.png')
 
 # Application definition
 

@@ -48,7 +48,7 @@ Think it step by step, first describe the image, then find out where is the arra
             response = model.generate_content([prompt, map_context])
         else:
             response = model.generate_content(prompt)
-        
+        print(response.text)
         return {
             'success': True,
             'location': response.text,

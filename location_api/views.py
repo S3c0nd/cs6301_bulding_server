@@ -236,7 +236,7 @@ def annotate_building(image_path, label, output_path):
     # 保存
     img.save(buffer, format='JPEG')
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    annotated_data_uri = f"data:image/jpeg;base64,{base64_str}"
+    annotated_data_uri = f"{base64_str}"
     return annotated_data_uri
 
 @csrf_exempt
@@ -316,10 +316,11 @@ def identify_location(request):
 
         image_data = base64.b64decode(base64_string)
         img = Image.open(BytesIO(image_data))
-        img.save("./building.png", 'PNG')
+        rotated = img.rotate(-90, expand=True)
+        rotated.save("./building.png", 'PNG')
         
         img_base64 = annotate_building("./building.png", building_name, '')
-        print(img_base64)
+        # print(img_base64)
 
 
         if result['success']:
