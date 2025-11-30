@@ -1,3 +1,5 @@
+import os
+
 """
 Django settings for building project.
 
@@ -25,8 +27,13 @@ SECRET_KEY = "django-insecure-tj#1%@d$z-90a2#7pp^c5az^4)=&x+f+mh_u(cbyh@!$zc9(ti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
+GEMINI_API_KEY = 'AIzaSyD1LTw6epdh2HUBxiVo6qYzW74SOsyDFKY'  
+OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
+
+MAP_PDF_PATH = os.path.join(BASE_DIR, 'location_api',  'output_map.png')
 
 # Application definition
 
@@ -37,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'location_api',    
 ]
 
 MIDDLEWARE = [
